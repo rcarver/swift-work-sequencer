@@ -1,10 +1,21 @@
 import Combine
 import CombineSchedulers
 
+/// A work sequencer that supports functions as the unit of work.
+typealias FnWorkSequencer = WorkSequencer<UUID>
+
+/// The work sequencer; a concurrent work queue that
+/// can process any unit of work.
 public class WorkSequencer<ID: Hashable> {
 
+    /// The type item representing our unit of work.
     public typealias Item = WorkItem<ID>
 
+    /// Initialize a work sequence.
+    ///
+    /// - Parameters:
+    ///   - count: The number of concurrent workers to run.
+    ///   - scheduler: The scheduler on which to perform work.
     public init(workers count: Int = 1, scheduler: AnySchedulerOf<DispatchQueue>) {
         self.workerCount = count
         self.scheduler = scheduler
@@ -24,14 +35,18 @@ public class WorkSequencer<ID: Hashable> {
     private var working: [ Int: Bool ] = [:]
     private var cancellables = Set<AnyCancellable>()
 
+    /// Start processing work.
     public func start() {
-        // fixme: idempotent
+        guard workers.isEmpty else { return }
         for index in 0..<workerCount {
             makeWorker(index)
         }
         distributeWork()
     }
 
+    /// Stop processing work.
+    ///
+    /// Anything in progress will receive a cancel signal.
     public func stop() {
         cancellables.removeAll()
         workers.removeAll()
@@ -46,6 +61,10 @@ extension WorkSequencer: Cancellable {
 
 public extension WorkSequencer where ID == UUID {
 
+    /// Append work to the sequence.
+    ///
+    /// - Parameter work: A function wrapping the work to be done.
+    /// - Returns: The UUID of the work.
     @discardableResult
     func append(_ work: @escaping Work) -> ID {
         let id = UUID()
@@ -56,6 +75,9 @@ public extension WorkSequencer where ID == UUID {
 
 public extension WorkSequencer {
 
+    /// Append work to the sequence.
+    ///
+    /// - Parameter item: The unit of work.
     func append(_ item: Item) {
         lock.sync {
             if itemLookup[item.id] == nil {
@@ -66,6 +88,13 @@ public extension WorkSequencer {
         distributeWork()
     }
 
+    /// Replace all items in the work sequence.
+    ///
+    /// Each item will be intelligently added, removed, or
+    /// ordering changed by diffing the new items to the
+    /// current items using their ID.
+    ///
+    /// - Parameter items: The new units of work.
     func replace(items: [Item]) {
         lock.sync {
             let diffs = items.map(\.id).difference(from: itemList)
