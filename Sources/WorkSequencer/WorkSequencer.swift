@@ -1,32 +1,6 @@
 import Combine
 import CombineSchedulers
 
-public typealias WorkSignal = AnyPublisher<Void, Error>
-
-public typealias Work = () -> WorkSignal
-
-public struct WorkItem<ID: Hashable>: Identifiable {
-
-    public init(id: ID, work: @escaping Work) {
-        self.id = id
-        self.work = work
-    }
-
-    public let id: ID
-    public let work: Work
-}
-
-public func WorkCompleted() -> WorkSignal {
-    Just<Void>(())
-        .setFailureType(to: Error.self)
-        .eraseToAnyPublisher()
-}
-
-public func WorkFailed(_ error: Error) -> WorkSignal {
-    Fail(error: error)
-        .eraseToAnyPublisher()
-}
-
 public class WorkSequencer<ID: Hashable> {
 
     public typealias Item = WorkItem<ID>
@@ -171,10 +145,12 @@ private extension WorkSequencer {
         let subject = Worker()
 
         subject
+            .handleEvents(receiveOutput: { [weak self] _ in
+                self?.workerWillStart(index)
+            })
             .receive(on: scheduler)
             .flatMap { [weak self] item -> AnyPublisher<Void, Never> in
                 guard let self = self else { return Empty().eraseToAnyPublisher() }
-                self.workerWillStart(index)
                 return self.work(on: item)
             }
             .sink { [weak self] result in

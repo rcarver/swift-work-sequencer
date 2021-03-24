@@ -62,6 +62,68 @@ final class LifecycleTests: XCTestCase {
     }
 }
 
+final class MultipleWorkersTests: XCTestCase {
+
+    var scheduler = DispatchQueue.testScheduler
+    var worker: WorkSequencer<UUID>!
+    var appender: ((Int, DispatchQueue.SchedulerTimeType.Stride) -> Work)!
+    var completions: [Int]!
+
+    override func setUp() {
+        completions = []
+        appender = { (id: Int, delay: DispatchQueue.SchedulerTimeType.Stride) -> Work in
+            {
+                let progress = WorkInProgress()
+                self.completions.append(id)
+                self.scheduler.schedule(after: self.scheduler.now.advanced(by: delay)) {
+                    self.completions.append(id * 10)
+                    progress.completed()
+                }
+                return progress.eraseToAnyPublisher()
+            }
+        }
+    }
+
+    func test_delayed_work() {
+        worker = WorkSequencer<UUID>(
+            workers: 1,
+            scheduler: scheduler.eraseToAnyScheduler())
+
+        worker.start()
+
+        worker.append(appender(1, 1))
+        worker.append(appender(2, 1))
+        XCTAssertEqual(completions, [])
+
+        scheduler.advance()
+        XCTAssertEqual(completions, [1])
+
+        scheduler.advance(by: 1)
+        XCTAssertEqual(completions, [1, 10, 2])
+
+        scheduler.advance(by: 1)
+        XCTAssertEqual(completions, [1, 10, 2, 20])
+    }
+
+    func test_concurrent_work() {
+        worker = WorkSequencer<UUID>(
+            workers: 2,
+            scheduler: scheduler.eraseToAnyScheduler())
+
+        worker.start()
+
+        worker.append(appender(1, 1))
+        worker.append(appender(2, 1))
+        XCTAssertEqual(completions, [])
+
+        scheduler.advance()
+        XCTAssertEqual(completions, [1, 2])
+
+        scheduler.advance(by: 1)
+        XCTAssertEqual(completions, [1, 2, 10, 20])
+    }
+}
+
 final class FunctionalTests: XCTestCase {
 
     var scheduler = DispatchQueue.immediateScheduler
