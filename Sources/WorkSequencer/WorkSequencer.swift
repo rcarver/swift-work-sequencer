@@ -24,15 +24,15 @@ public class WorkSequencer<ID: Hashable> {
     private var workerCount: Int
     private var scheduler: AnySchedulerOf<DispatchQueue>
 
+    private var itemList: [Item.ID] = []
     private var itemLookup: [ Item.ID : Item ] = [:]
     private var lock = DispatchQueue(label: "WorkSequencer-Lock")
 
-    private(set) var itemList: [Item.ID] = []
-
     private typealias Worker = PassthroughSubject<Item, Never>
+    private typealias WorkerIndex = Int
 
-    private var workers: [ Int : Worker ] = [:]
-    private var working: [ Int: Bool ] = [:]
+    private var workers: [ WorkerIndex : Worker ] = [:]
+    private var working: [ WorkerIndex : Bool ] = [:]
     private var cancellables = Set<AnyCancellable>()
 
     /// Start processing work.
@@ -63,8 +63,8 @@ public extension WorkSequencer where ID == UUID {
 
     /// Append work to the sequence.
     ///
-    /// - Parameter work: A function wrapping the work to be done.
-    /// - Returns: The UUID of the work.
+    /// - Parameter work: A function over the work to be done.
+    /// - Returns: The UUID of the unit of work.
     @discardableResult
     func append(_ work: @escaping Work) -> ID {
         let id = UUID()
@@ -75,17 +75,27 @@ public extension WorkSequencer where ID == UUID {
 
 public extension WorkSequencer {
 
-    func append<Item>(_ item: Item) where Item: Workable, Item.ID == ID {
-        append(WorkItem(id: item.id, unit: item.work))
-    }
-
-    func replace<Item>(items: [Item]) where Item: Workable, Item.ID == ID {
-        replace(items: items.map { WorkItem(id: $0.id, unit: $0.work) })
-    }
-
     /// Append work to the sequence.
     ///
     /// - Parameter item: The unit of work.
+    func append<Item>(_ item: Item) where Item : Workable, Item.ID == ID {
+        append(WorkItem(id: item.id, unit: item.work))
+    }
+
+    /// Replace all items in the work sequence.
+    ///
+    /// Each item will be intelligently added, removed, or
+    /// ordering changed by diffing the new items to the
+    /// current items using their ID.
+    ///
+    /// - Parameter items: The new units of work.
+    func replace<Item>(items: [Item]) where Item : Workable, Item.ID == ID {
+        replace(items: items.map { WorkItem(id: $0.id, unit: $0.work) })
+    }
+}
+
+private extension WorkSequencer {
+
     func append(_ item: Item) {
         lock.sync {
             if itemLookup[item.id] == nil {
@@ -96,13 +106,6 @@ public extension WorkSequencer {
         distributeWork()
     }
 
-    /// Replace all items in the work sequence.
-    ///
-    /// Each item will be intelligently added, removed, or
-    /// ordering changed by diffing the new items to the
-    /// current items using their ID.
-    ///
-    /// - Parameter items: The new units of work.
     func replace(items: [Item]) {
         lock.sync {
 
@@ -186,7 +189,7 @@ private extension WorkSequencer {
 
 private extension WorkSequencer {
 
-    func makeWorker(_ index: Int) {
+    private func makeWorker(_ index: WorkerIndex) {
         let subject = Worker()
 
         subject
@@ -217,13 +220,13 @@ private extension WorkSequencer {
         }
     }
 
-    func workerWillStart(_ index: Int) {
+    private func workerWillStart(_ index: WorkerIndex) {
         lock.sync {
             working[index] = true
         }
     }
 
-    func workerDidFinish(_ index: Int, cancelled: Bool) {
+    private func workerDidFinish(_ index: WorkerIndex, cancelled: Bool) {
         lock.sync {
             working[index] = nil
         }
@@ -233,7 +236,7 @@ private extension WorkSequencer {
     }
 
     func distributeWork() {
-        var jobs: [(Int, Item, Worker)] = []
+        var jobs: [(WorkerIndex, Item, Worker)] = []
         lock.sync {
             let available = Set(workers.keys).subtracting(working.keys)
             for key in available {
