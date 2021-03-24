@@ -1,6 +1,6 @@
 # WorkSequencer
 
-A simple Combine-based work queue.
+A simple Combine-based work queue. Supports appending or intelligently replacing all work items.
 
 ## Functional Style
 
@@ -36,7 +36,7 @@ In this style each function is given a unique UUID.
 
 ## Structural Style
 
-Adopt the `Workable` protocol for any struct or class. 
+Adopt the `Workable` protocol to define a unit of work.
 
 ```swift
 /// A work item is an identifiable unit of work
@@ -90,6 +90,7 @@ sequencer.replace(items: [hello, world])
 
 // Prints: "Goodbye, Hello, World" because Goodbye starts before it's replaced.
 ```
+
 ## License
 
 This library is released under the MIT license. See [LICENSE](LICENSE) for details.
