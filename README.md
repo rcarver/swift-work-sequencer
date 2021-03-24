@@ -1,3 +1,3 @@
-# swift-work-sequencer
+# WorkSequencer
 
-A description of this package.
+A simple Combine-based work queue.

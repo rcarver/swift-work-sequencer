@@ -34,20 +34,20 @@ final class WorkFunctionTests: XCTestCase {
 
     func test_append_item() {
         worker.start()
-        worker.append(WorkItem(id: UUID(), work: appender(1)))
-        worker.append(WorkItem(id: UUID(), work: appender(2)))
+        worker.append(WorkItem(id: UUID(), unit: appender(1)))
+        worker.append(WorkItem(id: UUID(), unit: appender(2)))
 
         XCTAssertEqual(completions, [1, 2])
     }
 
-    func test_replace_function() throws {
+    func test_replace() throws {
         let a = worker.append(appender(1))
         let b = worker.append(appender(2))
 
         let items = [
-            WorkItem(id: b, work: appender(22)),
-            WorkItem(id: a, work: appender(11)),
-            WorkItem(id: UUID(), work: appender(33))
+            WorkItem(id: b, unit: appender(22)),
+            WorkItem(id: a, unit: appender(11)),
+            WorkItem(id: UUID(), unit: appender(33))
         ]
 
         worker.replace(items: items)
@@ -58,4 +58,49 @@ final class WorkFunctionTests: XCTestCase {
 }
 
 final class WorkableTests: XCTestCase {
+
+    var scheduler = DispatchQueue.immediateScheduler
+    var worker: WorkSequencer<Int>!
+    var effects: Effects!
+
+    struct TestItem: Workable {
+        var id: Int
+        var effects: Effects
+        func work() -> WorkSignal {
+            effects.completions.append(id)
+            return WorkCompleted()
+        }
+    }
+
+    class Effects {
+        var completions: [Int] = []
+    }
+
+    override func setUp() {
+        worker = WorkSequencer(
+            workers: 1,
+            scheduler: scheduler.eraseToAnyScheduler())
+
+        effects = Effects()
+    }
+
+    func test_append() {
+        worker.start()
+        worker.append(TestItem(id: 1, effects: effects))
+        worker.append(TestItem(id: 2, effects: effects))
+
+        XCTAssertEqual(effects.completions, [1, 2])
+    }
+
+    func test_replace() throws {
+        let a = TestItem(id: 1, effects: effects)
+        let b = TestItem(id: 2, effects: effects)
+        let c = TestItem(id: 3, effects: effects)
+
+        worker.replace(items: [a, b, c])
+        worker.replace(items: [b, a, c])
+        worker.start()
+
+        XCTAssertEqual(effects.completions, [2, 1, 3])
+    }
 }

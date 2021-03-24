@@ -85,14 +85,14 @@ final class ReplaceTests: XCTestCase {
 
     func test_replace_insert_before_start() {
         let items1 = [
-            WorkItem(id: 1, work: appender(1)),
-            WorkItem(id: 2, work: appender(2))
+            WorkItem(id: 1, unit: appender(1)),
+            WorkItem(id: 2, unit: appender(2))
         ]
 
         let items2 = [
-            WorkItem(id: 2, work: appender(22)),
-            WorkItem(id: 1, work: appender(11)),
-            WorkItem(id: 3, work: appender(33))
+            WorkItem(id: 2, unit: appender(22)),
+            WorkItem(id: 1, unit: appender(11)),
+            WorkItem(id: 3, unit: appender(33))
         ]
 
         worker.replace(items: items1)
@@ -104,13 +104,13 @@ final class ReplaceTests: XCTestCase {
 
     func test_replace_remove_before_start() {
         let items1 = [
-            WorkItem(id: 1, work: appender(1)),
-            WorkItem(id: 2, work: appender(2))
+            WorkItem(id: 1, unit: appender(1)),
+            WorkItem(id: 2, unit: appender(2))
         ]
 
         let items2 = [
-            WorkItem(id: 1, work: appender(11)),
-            WorkItem(id: 3, work: appender(33))
+            WorkItem(id: 1, unit: appender(11)),
+            WorkItem(id: 3, unit: appender(33))
         ]
 
         worker.replace(items: items1)
@@ -148,9 +148,9 @@ final class ReplaceWhileWorkingTests: XCTestCase {
     }
 
     func test_replace_insert() {
-        let a = WorkItem(id: 1, work: appender(1, 1))
-        let b = WorkItem(id: 2, work: appender(2, 1))
-        let c = WorkItem(id: 3, work: appender(3, 1))
+        let a = WorkItem(id: 1, unit: appender(1, 1))
+        let b = WorkItem(id: 2, unit: appender(2, 1))
+        let c = WorkItem(id: 3, unit: appender(3, 1))
 
         worker.start()
         worker.replace(items: [a, b, c])
@@ -170,9 +170,9 @@ final class ReplaceWhileWorkingTests: XCTestCase {
     }
 
     func test_replace_remove() {
-        let a = WorkItem(id: 1, work: appender(1, 1))
-        let b = WorkItem(id: 2, work: appender(2, 1))
-        let c = WorkItem(id: 3, work: appender(3, 1))
+        let a = WorkItem(id: 1, unit: appender(1, 1))
+        let b = WorkItem(id: 2, unit: appender(2, 1))
+        let c = WorkItem(id: 3, unit: appender(3, 1))
 
         worker.start()
         worker.replace(items: [a, b, c])

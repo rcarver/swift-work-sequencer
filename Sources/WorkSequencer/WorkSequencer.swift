@@ -68,12 +68,20 @@ public extension WorkSequencer where ID == UUID {
     @discardableResult
     func append(_ work: @escaping Work) -> ID {
         let id = UUID()
-        append(WorkItem(id: id, work: work))
+        append(WorkItem(id: id, unit: work))
         return id
     }
 }
 
 public extension WorkSequencer {
+
+    func append<Item>(_ item: Item) where Item: Workable, Item.ID == ID {
+        append(WorkItem(id: item.id, unit: item.work))
+    }
+
+    func replace<Item>(items: [Item]) where Item: Workable, Item.ID == ID {
+        replace(items: items.map { WorkItem(id: $0.id, unit: $0.work) })
+    }
 
     /// Append work to the sequence.
     ///

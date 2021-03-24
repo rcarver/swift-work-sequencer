@@ -7,13 +7,22 @@ public typealias Work = () -> WorkSignal
 public typealias WorkSignal = AnyPublisher<Void, Error>
 
 /// A work item is an identifiable unit of work
-public struct WorkItem<ID: Hashable>: Identifiable {
+public protocol Workable: Identifiable {
+    func work() -> WorkSignal
+}
 
-    public init(id: ID, work: @escaping Work) {
+/// A concrete work item.
+public struct WorkItem<ID: Hashable>: Workable {
+
+    public init(id: ID, unit: @escaping Work) {
         self.id = id
-        self.work = work
+        self.unit = unit
     }
 
     public let id: ID
-    public let work: Work
+    public let unit: Work
+
+    public func work() -> WorkSignal {
+        unit()
+    }
 }
