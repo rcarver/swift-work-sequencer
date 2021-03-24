@@ -1,11 +1,29 @@
 import Combine
 import CombineSchedulers
 
-public protocol Workable: Identifiable {
-    func work() -> AnyPublisher<Void, Error>
+public typealias WorkSignal = AnyPublisher<Void, Error>
+
+public typealias Work = () -> WorkSignal
+
+public struct WorkableItem<ID: Hashable>: Identifiable {
+    public var id: ID
+    public var work: Work
 }
 
-public class WorkSequencer<Item>: Cancellable where Item: Workable {
+public func WorkCompleted() -> WorkSignal {
+    Just<Void>(())
+        .setFailureType(to: Error.self)
+        .eraseToAnyPublisher()
+}
+
+public func WorkFailed(_ error: Error) -> WorkSignal {
+    Fail(error: error)
+        .eraseToAnyPublisher()
+}
+
+public class WorkSequencer<ID: Hashable>: Cancellable {
+
+    public typealias Item = WorkableItem<ID>
 
     public init(workers count: Int = 1, scheduler: AnySchedulerOf<DispatchQueue>) {
         self.workerCount = count
@@ -30,8 +48,21 @@ public class WorkSequencer<Item>: Cancellable where Item: Workable {
     public func cancel() {
         cancellables.removeAll()
     }
+}
 
-    public func append(_ item: Item) {
+public extension WorkSequencer where ID == UUID {
+
+    @discardableResult
+    func append(_ work: @escaping Work) -> ID {
+        let id = UUID()
+        append(WorkableItem(id: id, work: work))
+        return id
+    }
+}
+
+public extension WorkSequencer {
+
+    func append(_ item: Item) {
         lock.sync {
             if itemLookup[item.id] == nil {
                 itemList.append(item.id)
@@ -40,7 +71,7 @@ public class WorkSequencer<Item>: Cancellable where Item: Workable {
         }
     }
 
-    public func replace(items: [Item]) {
+    func replace(items: [Item]) {
         let diffs = items.map(\.id).difference(from: itemList)
         for diff in diffs {
             switch diff {
