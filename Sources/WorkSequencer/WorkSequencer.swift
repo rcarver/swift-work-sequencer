@@ -5,9 +5,15 @@ public typealias WorkSignal = AnyPublisher<Void, Error>
 
 public typealias Work = () -> WorkSignal
 
-public struct WorkableItem<ID: Hashable>: Identifiable {
-    public var id: ID
-    public var work: Work
+public struct WorkItem<ID: Hashable>: Identifiable {
+
+    public init(id: ID, work: @escaping Work) {
+        self.id = id
+        self.work = work
+    }
+
+    public let id: ID
+    public let work: Work
 }
 
 public func WorkCompleted() -> WorkSignal {
@@ -21,9 +27,9 @@ public func WorkFailed(_ error: Error) -> WorkSignal {
         .eraseToAnyPublisher()
 }
 
-public class WorkSequencer<ID: Hashable>: Cancellable {
+public class WorkSequencer<ID: Hashable> {
 
-    public typealias Item = WorkableItem<ID>
+    public typealias Item = WorkItem<ID>
 
     public init(workers count: Int = 1, scheduler: AnySchedulerOf<DispatchQueue>) {
         self.workerCount = count
@@ -32,21 +38,34 @@ public class WorkSequencer<ID: Hashable>: Cancellable {
 
     private var workerCount: Int
     private var scheduler: AnySchedulerOf<DispatchQueue>
-    private var cancellables = Set<AnyCancellable>()
 
     private var itemLookup: [ Item.ID : Item ] = [:]
-    private var lock = DispatchQueue(label: "WorkQueue")
+    private var lock = DispatchQueue(label: "WorkSequencer-Lock")
 
     private(set) var itemList: [Item.ID] = []
 
+    private typealias Worker = PassthroughSubject<Item, Never>
+
+    private var workers: [ Int : Worker ] = [:]
+    private var working: [ Int: Bool ] = [:]
+    private var cancellables = Set<AnyCancellable>()
+
     public func start() {
-        for _ in 0..<workerCount {
-            startWorker()
+        for index in 0..<workerCount {
+            makeWorker(index)
         }
+        distributeWork()
     }
 
-    public func cancel() {
+    public func stop() {
         cancellables.removeAll()
+        workers.removeAll()
+    }
+}
+
+extension WorkSequencer: Cancellable {
+    public func cancel() {
+        stop()
     }
 }
 
@@ -55,7 +74,7 @@ public extension WorkSequencer where ID == UUID {
     @discardableResult
     func append(_ work: @escaping Work) -> ID {
         let id = UUID()
-        append(WorkableItem(id: id, work: work))
+        append(WorkItem(id: id, work: work))
         return id
     }
 }
@@ -69,54 +88,38 @@ public extension WorkSequencer {
                 itemLookup[item.id] = item
             }
         }
+        distributeWork()
     }
 
     func replace(items: [Item]) {
-        let diffs = items.map(\.id).difference(from: itemList)
-        for diff in diffs {
-            switch diff {
-            case .insert(let index, let element, _):
-                if let item = items.first(where: { $0.id == element }) {
-                    itemList.insert(item.id, at: index)
-                    itemLookup[item.id] = item
-                }
-            case .remove(let index, let element, _):
-                if let item = items.first(where: { $0.id == element }) {
-                    itemList.remove(at: index)
-                    itemLookup[item.id] = nil
+        lock.sync {
+            let diffs = items.map(\.id).difference(from: itemList)
+            for diff in diffs {
+                switch diff {
+                case .insert(let index, let element, _):
+                    if let item = items.first(where: { $0.id == element }) {
+                        itemList.insert(item.id, at: index)
+                        itemLookup[item.id] = item
+                    }
+                case .remove(let index, let element, _):
+                    if let item = items.first(where: { $0.id == element }) {
+                        itemList.remove(at: index)
+                        itemLookup[item.id] = nil
+                    }
                 }
             }
         }
+        distributeWork()
     }
 }
+
+// MARK: - Work lifecycle
 
 private extension WorkSequencer {
 
     enum Result {
         case success(Item.ID)
         case failure(Item.ID)
-    }
-
-    func startWorker() {
-        let subject = PassthroughSubject<Item, Never>()
-
-        subject
-            .receive(on: scheduler)
-            .flatMap { [weak self] item -> AnyPublisher<Void, Never> in
-                guard let self = self else { return Empty().eraseToAnyPublisher() }
-                return self.work(on: item)
-            }
-            .sink { [weak self] result in
-                guard let self = self else { return }
-                if let next = self.next() {
-                    subject.send(next)
-                }
-            }
-            .store(in: &cancellables)
-
-        if let next = next() {
-            subject.send(next)
-        }
     }
 
     func work(on item: Item) -> AnyPublisher<Void, Never> {
@@ -158,18 +161,65 @@ private extension WorkSequencer {
             itemLookup[id] = nil
         }
     }
+}
 
-    func next() -> Item? {
-        lock.sync {
-            if let id = nextId(), let item = itemLookup[id] {
-                return item
-            } else {
-                return nil
+// MARK: - Worker lifecycle.
+
+private extension WorkSequencer {
+
+    func makeWorker(_ index: Int) {
+        let subject = Worker()
+
+        subject
+            .receive(on: scheduler)
+            .flatMap { [weak self] item -> AnyPublisher<Void, Never> in
+                guard let self = self else { return Empty().eraseToAnyPublisher() }
+                self.workerWillStart(index)
+                return self.work(on: item)
             }
+            .sink { [weak self] result in
+                guard let self = self else { return }
+                self.workerDidFinish(index)
+            }
+            .store(in: &cancellables)
+
+        workers[index] = subject
+    }
+
+    func workerWillStart(_ index: Int) {
+        working[index] = true
+    }
+
+    func workerDidFinish(_ index: Int) {
+        working[index] = nil
+        distributeWork()
+    }
+
+    func distributeWork() {
+        var jobs: [(Item, Worker)] = []
+        lock.sync {
+            let available = Set(workers.keys).subtracting(working.keys)
+            for key in available {
+                if let next = unsafe_next(), let worker = workers[key] {
+                    jobs.append((next, worker))
+                }
+            }
+        }
+        for job in jobs {
+            let (item, worker) = job
+            worker.send(item)
         }
     }
 
-    func nextId() -> Item.ID? {
+    func unsafe_next() -> Item? {
+        if let id = unsafe_nextId(), let item = itemLookup[id] {
+            return item
+        } else {
+            return nil
+        }
+    }
+
+    func unsafe_nextId() -> Item.ID? {
         if itemList.count > 0 {
             return itemList.removeFirst()
         } else {
