@@ -5,9 +5,12 @@ public func Working() -> PassthroughSubject<Void, Error> {
     PassthroughSubject()
 }
 
-/// Create a signal that the work is in progress.
-public func WorkInProgress(_ subject: PassthroughSubject<Void, Error>) -> WorkSignal {
-    subject.eraseToAnyPublisher()
+/// Create a signal that the work is in progress. Optional callback tells you if the
+/// work was cancelled so you can decide what to do.
+public func WorkInProgress(_ subject: PassthroughSubject<Void, Error>, cancelled: @escaping () -> Void = {}) -> WorkSignal {
+    subject
+        .handleEvents(receiveCancel: cancelled)
+        .eraseToAnyPublisher()
 }
 
 /// Create a signal that the work has completed.

@@ -25,6 +25,7 @@ public class WorkSequencer<ID: Hashable> {
     private var cancellables = Set<AnyCancellable>()
 
     public func start() {
+        // fixme: idempotent
         for index in 0..<workerCount {
             makeWorker(index)
         }
@@ -122,10 +123,7 @@ private extension WorkSequencer {
 
     func failed(_ id: Item.ID) {
         lock.sync {
-            // infinite retry?
-            if itemLookup[id] != nil {
-                itemList.append(id)
-            }
+            itemLookup[id] = nil
         }
     }
 
@@ -154,7 +152,11 @@ private extension WorkSequencer {
                     .handleEvents(
                         receiveCompletion: { [weak self] completion in
                             guard let self = self else { return }
-                            self.workerDidFinish(index)
+                            self.workerDidFinish(index, cancelled: false)
+                        },
+                        receiveCancel: { [weak self] in
+                            guard let self = self else { return }
+                            self.workerDidFinish(index, cancelled: true)
                         }
                     )
                     .eraseToAnyPublisher()
@@ -173,25 +175,27 @@ private extension WorkSequencer {
         }
     }
 
-    func workerDidFinish(_ index: Int) {
+    func workerDidFinish(_ index: Int, cancelled: Bool) {
         lock.sync {
             working[index] = nil
         }
-        distributeWork()
+        if !cancelled {
+            distributeWork()
+        }
     }
 
     func distributeWork() {
-        var jobs: [(Item, Worker)] = []
+        var jobs: [(Int, Item, Worker)] = []
         lock.sync {
             let available = Set(workers.keys).subtracting(working.keys)
             for key in available {
                 if let next = unsafe_next(), let worker = workers[key] {
-                    jobs.append((next, worker))
+                    jobs.append((key, next, worker))
                 }
             }
         }
         for job in jobs {
-            let (item, worker) = job
+            let (_, item, worker) = job
             worker.send(item)
         }
     }

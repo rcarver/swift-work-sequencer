@@ -62,7 +62,7 @@ final class LifecycleTests: XCTestCase {
     }
 }
 
-final class DelayedWorkersTests: XCTestCase {
+final class DelayedWorkTests: XCTestCase {
 
     var scheduler = DispatchQueue.testScheduler
     var worker: WorkSequencer<UUID>!
@@ -124,58 +124,59 @@ final class DelayedWorkersTests: XCTestCase {
     }
 }
 
-final class FunctionalTests: XCTestCase {
+final class CancelledWorkTests: XCTestCase {
 
-    var scheduler = DispatchQueue.immediateScheduler
+    var scheduler = DispatchQueue.testScheduler
     var worker: WorkSequencer<UUID>!
-    var appender: ((Int) -> Work)!
+    var appender: ((Int, DispatchQueue.SchedulerTimeType.Stride) -> Work)!
     var completions: [Int]!
 
     override func setUp() {
-        worker = WorkSequencer<UUID>(
-            workers: 1,
-            scheduler: scheduler.eraseToAnyScheduler())
-
         completions = []
-        appender = { (id: Int) -> Work in
+        appender = { (id: Int, delay: DispatchQueue.SchedulerTimeType.Stride) -> Work in
             {
+                let signal = Working()
+                var wasCancelled: Bool = false
                 self.completions.append(id)
-                return WorkCompleted()
+                self.scheduler.schedule(after: self.scheduler.now.advanced(by: delay)) {
+                    if wasCancelled {
+                        self.completions.append(id * -1)
+                    } else {
+                        self.completions.append(id * 10)
+                    }
+                    signal.completed()
+                }
+                return WorkInProgress(signal, cancelled: {
+                    wasCancelled = true
+                })
             }
         }
     }
 
-    func test_append_function() {
-        worker.start()
-        worker.append(appender(1))
-        worker.append(appender(2))
+    func test_cancelled_work() {
+        worker = WorkSequencer<UUID>(
+            workers: 1,
+            scheduler: scheduler.eraseToAnyScheduler())
 
-        XCTAssertEqual(completions, [1, 2])
-    }
-
-    func test_append_item() {
-        worker.start()
-        worker.append(WorkItem(id: UUID(), work: appender(1)))
-        worker.append(WorkItem(id: UUID(), work: appender(2)))
-
-        XCTAssertEqual(completions, [1, 2])
-    }
-
-    func test_replace_function() throws {
-        throw XCTSkip("not implemented")
-
-        let a = worker.append(appender(1))
-        let b = worker.append(appender(2))
-
-        let items = [
-            WorkItem(id: b, work: appender(22)),
-            WorkItem(id: a, work: appender(11)),
-            WorkItem(id: UUID(), work: appender(33))
-        ]
-
-        worker.replace(items: items)
         worker.start()
 
-        XCTAssertEqual(completions, [22, 11, 33])
+        worker.append(appender(1, 1))
+        worker.append(appender(2, 1))
+        XCTAssertEqual(completions, [])
+
+        scheduler.advance()
+        XCTAssertEqual(completions, [1])
+
+        worker.stop()
+        scheduler.advance(by: 1)
+        XCTAssertEqual(completions, [1, -1], "work was cancelled")
+
+        scheduler.advance(by: 1)
+        XCTAssertEqual(completions, [1, -1], "future work does not start")
+
+        worker.start()
+        scheduler.advance(by: 1)
+        XCTAssertEqual(completions, [1, -1, 2, 20], "future work resumed")
     }
 }
+
