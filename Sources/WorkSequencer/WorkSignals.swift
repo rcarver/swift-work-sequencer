@@ -7,9 +7,11 @@ public func Working() -> PassthroughSubject<Void, Error> {
 
 /// Create a signal that the work is in progress. Optional callback tells you if the
 /// work was cancelled so you can decide what to do.
-public func WorkInProgress(_ subject: PassthroughSubject<Void, Error>, cancelled: @escaping () -> Void = {}) -> WorkSignal {
-    subject
+public func WorkInProgress<P>(_ publisher: P, cancelled: @escaping () -> Void = {}) -> WorkSignal where P : Publisher {
+    publisher
         .handleEvents(receiveCancel: cancelled)
+        .map { _ in () }
+        .mapError { $0 as Error }
         .eraseToAnyPublisher()
 }
 
