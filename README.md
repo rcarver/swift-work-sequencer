@@ -10,28 +10,28 @@ blocking/immediate completions and delayed/signaled completions.
 In this style each function is given a unique UUID.
 
 ```swift
-    /// Create a functional sequencer. This one has three concurrent workers
-    /// and executes work on the main queue.
-    let sequencer = FnWorkSequencer(workers: 3, scheduler: DispatchQueue.main.eraseToAnyScheduler())
+/// Create a functional sequencer. This one has three concurrent workers
+/// and executes work on the main queue.
+let sequencer = FnWorkSequencer(workers: 3, scheduler: DispatchQueue.main.eraseToAnyScheduler())
 
-    /// Start processing work.
-    sequencer.start()
+/// Start processing work.
+sequencer.start()
 
-    // Perform some work
-    sequencer.append {
-        print("Immediate done!")
-        return WorkCompleted()
-    }
+// Perform some work
+sequencer.append {
+    print("Immediate done!")
+    return WorkCompleted()
+}
 
-    // Perform work that takes time by sending a signal when it's done.
-    sequencer.append {
-        let signal = Just("Delayed done!")
-            .delay(for: .milliseconds(10), scheduler: DispatchQueue.main)
-            .handleEvents(receiveOutput: { message in
-                print(message)
-            })
-        return WorkInProgress(signal)
-    }
+// Perform work that takes time by sending a signal when it's done.
+sequencer.append {
+    let signal = Just("Delayed done!")
+        .delay(for: .milliseconds(10), scheduler: DispatchQueue.main)
+        .handleEvents(receiveOutput: { message in
+            print(message)
+        })
+    return WorkInProgress(signal)
+}
 ```
 
 ## Structural Style
@@ -47,24 +47,24 @@ public protocol Workable: Identifiable {
 An example of using `Workable`. In this style you define the ID of each unit of work.
 
 ```swift
-    /// Anything can be workable
-    struct Printer: Workable {
-        var id: String
-        func work() -> WorkSignal {
-            print(id)
-            return WorkCompleted()
-        }
+/// Anything can be workable
+struct Printer: Workable {
+    var id: String
+    func work() -> WorkSignal {
+        print(id)
+        return WorkCompleted()
     }
+}
 
-    /// Create a sequencer matching our work's identifier.
-    let sequencer = WorkSequencer<String>(scheduler: DispatchQueue.main.eraseToAnyScheduler())
+/// Create a sequencer matching our work's identifier.
+let sequencer = WorkSequencer<String>(scheduler: DispatchQueue.main.eraseToAnyScheduler())
 
-    /// Start processing work.
-    sequencer.start()
+/// Start processing work.
+sequencer.start()
 
-    /// Do some work.
-    sequencer.append(Printer(id: "Hello"))
-    sequencer.append(Printer(id: "World"))
+/// Do some work.
+sequencer.append(Printer(id: "Hello"))
+sequencer.append(Printer(id: "World"))
 ```
 
 ## Replacing all work
