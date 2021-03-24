@@ -2,7 +2,7 @@ import Combine
 import CombineSchedulers
 
 /// A work sequencer that supports functions as the unit of work.
-typealias FnWorkSequencer = WorkSequencer<UUID>
+public typealias FnWorkSequencer = WorkSequencer<UUID>
 
 /// The work sequencer; a concurrent work queue that
 /// can process any unit of work.
@@ -59,20 +59,6 @@ extension WorkSequencer: Cancellable {
     }
 }
 
-public extension WorkSequencer where ID == UUID {
-
-    /// Append work to the sequence.
-    ///
-    /// - Parameter work: A function over the work to be done.
-    /// - Returns: The UUID of the unit of work.
-    @discardableResult
-    func append(_ work: @escaping Work) -> ID {
-        let id = UUID()
-        append(WorkItem(id: id, unit: work))
-        return id
-    }
-}
-
 public extension WorkSequencer {
 
     /// Append work to the sequence.
@@ -93,6 +79,22 @@ public extension WorkSequencer {
         replace(items: items.map { WorkItem(id: $0.id, unit: $0.work) })
     }
 }
+
+public extension WorkSequencer where ID == UUID {
+
+    /// Append work to the sequence.
+    ///
+    /// - Parameter work: A function over the work to be done.
+    /// - Returns: The UUID of the unit of work.
+    @discardableResult
+    func append(_ work: @escaping Work) -> ID {
+        let id = UUID()
+        append(WorkItem(id: id, unit: work))
+        return id
+    }
+}
+
+// MARK: - Managing items
 
 private extension WorkSequencer {
 
