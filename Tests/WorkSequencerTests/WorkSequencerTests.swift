@@ -73,13 +73,13 @@ final class DelayedWorkersTests: XCTestCase {
         completions = []
         appender = { (id: Int, delay: DispatchQueue.SchedulerTimeType.Stride) -> Work in
             {
-                let work = WorkInProgress()
+                let signal = Working()
                 self.completions.append(id)
                 self.scheduler.schedule(after: self.scheduler.now.advanced(by: delay)) {
                     self.completions.append(id * 10)
-                    work.completed()
+                    signal.completed()
                 }
-                return work.eraseToAnyPublisher()
+                return WorkInProgress(signal)
             }
         }
     }
