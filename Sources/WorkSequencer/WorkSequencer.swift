@@ -162,15 +162,21 @@ private extension WorkSequencer {
             .sink { _ in }
             .store(in: &cancellables)
 
-        workers[index] = subject
+        lock.sync {
+            workers[index] = subject
+        }
     }
 
     func workerWillStart(_ index: Int) {
-        working[index] = true
+        lock.sync {
+            working[index] = true
+        }
     }
 
     func workerDidFinish(_ index: Int) {
-        working[index] = nil
+        lock.sync {
+            working[index] = nil
+        }
         distributeWork()
     }
 
