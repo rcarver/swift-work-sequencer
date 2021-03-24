@@ -3,9 +3,9 @@
 import PackageDescription
 
 let package = Package(
-    name: "WorkSequencer",
+    name: "swift-work-sequencer",
     platforms: [
-        .iOS(.v14),
+        .iOS(.v13),
     ],
     products: [
         .library(
