@@ -310,3 +310,42 @@ final class CancelledWorkTests: XCTestCase {
     }
 }
 
+final class FailedWorkTests: XCTestCase {
+
+    var scheduler = DispatchQueue.immediateScheduler
+    var worker: WorkSequencer<UUID>!
+    var appender: ((Int, Bool) -> Work)!
+    var completions: [Int]!
+
+    struct Because: Error {}
+
+    override func setUp() {
+        completions = []
+        appender = { (id: Int, fail: Bool) -> Work in
+            {
+                if fail {
+                    self.completions.append(-id)
+                    return WorkFailed(Because())
+                } else {
+                    self.completions.append(id)
+                    return WorkCompleted()
+                }
+            }
+        }
+    }
+
+    func test_failed_work() {
+        worker = WorkSequencer<UUID>(
+            workers: 1,
+            scheduler: scheduler.eraseToAnyScheduler())
+
+        worker.start()
+
+        worker.append(appender(1, true))
+        worker.append(appender(2, false))
+        worker.append(appender(3, true))
+        worker.append(appender(4, false))
+
+        XCTAssertEqual(completions, [-1, 2, -3, 4])
+    }
+}
