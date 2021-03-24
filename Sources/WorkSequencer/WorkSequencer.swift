@@ -98,7 +98,6 @@ private extension WorkSequencer {
 
     func work(on item: Item) -> AnyPublisher<Void, Never> {
         item.work()
-            .first()
             .handleEvents(
                 receiveCompletion: { [weak self] completion in
                     switch completion {
@@ -152,11 +151,15 @@ private extension WorkSequencer {
             .flatMap { [weak self] item -> AnyPublisher<Void, Never> in
                 guard let self = self else { return Empty().eraseToAnyPublisher() }
                 return self.work(on: item)
+                    .handleEvents(
+                        receiveCompletion: { [weak self] completion in
+                            guard let self = self else { return }
+                            self.workerDidFinish(index)
+                        }
+                    )
+                    .eraseToAnyPublisher()
             }
-            .sink { [weak self] result in
-                guard let self = self else { return }
-                self.workerDidFinish(index)
-            }
+            .sink { _ in }
             .store(in: &cancellables)
 
         workers[index] = subject

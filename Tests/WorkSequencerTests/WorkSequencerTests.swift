@@ -62,7 +62,7 @@ final class LifecycleTests: XCTestCase {
     }
 }
 
-final class MultipleWorkersTests: XCTestCase {
+final class DelayedWorkersTests: XCTestCase {
 
     var scheduler = DispatchQueue.testScheduler
     var worker: WorkSequencer<UUID>!
@@ -73,13 +73,13 @@ final class MultipleWorkersTests: XCTestCase {
         completions = []
         appender = { (id: Int, delay: DispatchQueue.SchedulerTimeType.Stride) -> Work in
             {
-                let progress = WorkInProgress()
+                let work = WorkInProgress()
                 self.completions.append(id)
                 self.scheduler.schedule(after: self.scheduler.now.advanced(by: delay)) {
                     self.completions.append(id * 10)
-                    progress.completed()
+                    work.completed()
                 }
-                return progress.eraseToAnyPublisher()
+                return work.eraseToAnyPublisher()
             }
         }
     }

@@ -12,21 +12,25 @@ public func WorkInProgress() -> PassthroughSubject<Void, Error> {
 
 public extension PassthroughSubject where Output == Void, Failure == Error {
     func completed() {
-        self.send()
+        self.send(completion: .finished)
+    }
+    func failed(error: Error) {
+        self.send(completion: .failure(error))
     }
 }
 
 /// Send a signal that the work has completed.
 public func WorkCompleted() -> WorkSignal {
-    Just<Void>(())
-        .setFailureType(to: Error.self)
-        .eraseToAnyPublisher()
+    let signal = PassthroughSubject<Void, Error>()
+    signal.send(completion: .finished)
+    return signal.eraseToAnyPublisher()
 }
 
 /// Send a signal that the work has failed.
 public func WorkFailed(_ error: Error) -> WorkSignal {
-    Fail(error: error)
-        .eraseToAnyPublisher()
+    let signal = PassthroughSubject<Void, Error>()
+    signal.send(completion: .failure(error))
+    return signal.eraseToAnyPublisher()
 }
 
 /// A work item is an identifiable unit of work
