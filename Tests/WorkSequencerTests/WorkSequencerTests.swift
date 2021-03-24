@@ -62,6 +62,136 @@ final class LifecycleTests: XCTestCase {
     }
 }
 
+final class ReplaceTests: XCTestCase {
+
+    var scheduler = DispatchQueue.immediateScheduler
+    var worker: WorkSequencer<Int>!
+    var appender: ((Int) -> Work)!
+    var completions: [Int]!
+
+    override func setUp() {
+        worker = WorkSequencer(
+            workers: 1,
+            scheduler: scheduler.eraseToAnyScheduler())
+
+        completions = []
+        appender = { (id: Int) -> Work in
+            {
+                self.completions.append(id)
+                return WorkCompleted()
+            }
+        }
+    }
+
+    func test_replace_insert_before_start() {
+        let items1 = [
+            WorkItem(id: 1, work: appender(1)),
+            WorkItem(id: 2, work: appender(2))
+        ]
+
+        let items2 = [
+            WorkItem(id: 2, work: appender(22)),
+            WorkItem(id: 1, work: appender(11)),
+            WorkItem(id: 3, work: appender(33))
+        ]
+
+        worker.replace(items: items1)
+        worker.replace(items: items2)
+        worker.start()
+
+        XCTAssertEqual(completions, [22, 11, 33])
+    }
+
+    func test_replace_remove_before_start() {
+        let items1 = [
+            WorkItem(id: 1, work: appender(1)),
+            WorkItem(id: 2, work: appender(2))
+        ]
+
+        let items2 = [
+            WorkItem(id: 1, work: appender(11)),
+            WorkItem(id: 3, work: appender(33))
+        ]
+
+        worker.replace(items: items1)
+        worker.replace(items: items2)
+        worker.start()
+
+        XCTAssertEqual(completions, [11, 33])
+    }
+}
+
+final class ReplaceWhileWorkingTests: XCTestCase {
+
+    var scheduler = DispatchQueue.testScheduler
+    var worker: WorkSequencer<Int>!
+    var appender: ((Int, DispatchQueue.SchedulerTimeType.Stride) -> Work)!
+    var completions: [Int]!
+
+    override func setUp() {
+        worker = WorkSequencer(
+            workers: 1,
+            scheduler: scheduler.eraseToAnyScheduler())
+
+        completions = []
+        appender = { (id: Int, delay: DispatchQueue.SchedulerTimeType.Stride) -> Work in
+            {
+                let signal = Working()
+                self.completions.append(id)
+                self.scheduler.schedule(after: self.scheduler.now.advanced(by: delay)) {
+                    self.completions.append(id * 10)
+                    signal.completed()
+                }
+                return WorkInProgress(signal)
+            }
+        }
+    }
+
+    func test_replace_insert() {
+        let a = WorkItem(id: 1, work: appender(1, 1))
+        let b = WorkItem(id: 2, work: appender(2, 1))
+        let c = WorkItem(id: 3, work: appender(3, 1))
+
+        worker.start()
+        worker.replace(items: [a, b, c])
+
+        scheduler.advance()
+        XCTAssertEqual(completions, [1])
+
+        worker.replace(items: [c, a, b])
+        scheduler.advance()
+        XCTAssertEqual(completions, [1])
+
+        scheduler.advance(by: 1)
+        XCTAssertEqual(completions, [1, 10, 3], "in progress work completes")
+
+        scheduler.advance(by: 2)
+        XCTAssertEqual(completions, [1, 10, 3, 30, 2, 20])
+    }
+
+    func test_replace_remove() {
+        let a = WorkItem(id: 1, work: appender(1, 1))
+        let b = WorkItem(id: 2, work: appender(2, 1))
+        let c = WorkItem(id: 3, work: appender(3, 1))
+
+        worker.start()
+        worker.replace(items: [a, b, c])
+
+        scheduler.advance()
+        XCTAssertEqual(completions, [1])
+
+        worker.replace(items: [c])
+        scheduler.advance()
+        XCTAssertEqual(completions, [1])
+
+        scheduler.advance(by: 1)
+        XCTAssertEqual(completions, [1, 10, 3], "in progress work completes")
+
+        scheduler.advance(by: 1)
+        XCTAssertEqual(completions, [1, 10, 3, 30])
+    }
+}
+
 final class DelayedWorkTests: XCTestCase {
 
     var scheduler = DispatchQueue.testScheduler

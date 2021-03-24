@@ -41,8 +41,6 @@ final class WorkFunctionTests: XCTestCase {
     }
 
     func test_replace_function() throws {
-        throw XCTSkip("not implemented")
-
         let a = worker.append(appender(1))
         let b = worker.append(appender(2))
 

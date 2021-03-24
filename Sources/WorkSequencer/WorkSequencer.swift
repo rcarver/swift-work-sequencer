@@ -97,21 +97,28 @@ public extension WorkSequencer {
     /// - Parameter items: The new units of work.
     func replace(items: [Item]) {
         lock.sync {
-            let diffs = items.map(\.id).difference(from: itemList)
+
+            /// Filter the inserts to work that's no currently in progress.
+            let inserting = items.map(\.id).filter(isWorkPending)
+
+            // Update order and removals.
+            let diffs = inserting.difference(from: itemList)
             for diff in diffs {
                 switch diff {
                 case .insert(let index, let element, _):
-                    if let item = items.first(where: { $0.id == element }) {
-                        itemList.insert(item.id, at: index)
-                        itemLookup[item.id] = item
-                    }
+                    itemList.insert(element, at: index)
                 case .remove(let index, let element, _):
-                    if let item = items.first(where: { $0.id == element }) {
-                        itemList.remove(at: index)
-                        itemLookup[item.id] = nil
-                    }
+                    itemList.remove(at: index)
+                    itemLookup[element] = nil
                 }
             }
+
+            /// Update all items with latest work.
+            for item in items {
+                itemLookup[item.id] = item
+            }
+
+            print("replaced", itemList)
         }
         distributeWork()
     }
@@ -160,6 +167,10 @@ private extension WorkSequencer {
         lock.sync {
             itemLookup[id] = nil
         }
+    }
+
+    func isWorkPending(id: Item.ID) -> Bool {
+        itemList.contains(id) || itemLookup[id] == nil
     }
 }
 
