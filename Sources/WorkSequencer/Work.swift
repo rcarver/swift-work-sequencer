@@ -26,3 +26,19 @@ public struct WorkItem<ID: Hashable>: Workable {
         unit()
     }
 }
+
+public extension Workable {
+
+    /// Type-erase any workable so you can mulitple types uniformly.
+    func eraseToAnyWorkItem() -> WorkItem<ID> {
+        WorkItem(id: id, unit: work)
+    }
+}
+
+public extension Collection where Element: Workable {
+
+    /// Type-erase any workable so you can mulitple types uniformly.
+    func eraseToAnyWorkItem() -> [WorkItem<Element.ID>] {
+        map { $0.eraseToAnyWorkItem() }
+    }
+}

@@ -65,7 +65,7 @@ public extension WorkSequencer {
     ///
     /// - Parameter item: The unit of work.
     func append<Item>(_ item: Item) where Item : Workable, Item.ID == ID {
-        append(WorkItem(id: item.id, unit: item.work))
+        append(item.eraseToAnyWorkItem())
     }
 
     /// Replace all items in the work sequence.
@@ -76,7 +76,7 @@ public extension WorkSequencer {
     ///
     /// - Parameter items: The new units of work.
     func replace<Item>(items: [Item]) where Item : Workable, Item.ID == ID {
-        replace(items: items.map { WorkItem(id: $0.id, unit: $0.work) })
+        replace(items: items.map { $0.eraseToAnyWorkItem() })
     }
 }
 
@@ -130,8 +130,6 @@ private extension WorkSequencer {
             for item in items {
                 itemLookup[item.id] = item
             }
-
-            print("replaced", itemList)
         }
         distributeWork()
     }
